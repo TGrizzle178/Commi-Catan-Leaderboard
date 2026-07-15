@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catan Leaderboard Tracker</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen py-8 px-4 font-sans">
+    <div class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-amber-500 mb-2">Catan Leaderboard</h1>
+            <p class="text-slate-400 text-sm">Settlers of Catan Live Competitive Standings</p>
+        </div>
+
+        <!-- Controls -->
+        <div class="bg-slate-800 p-4 rounded-xl mb-6 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div class="flex rounded-lg bg-slate-700 p-1">
+                <button id="btnWins" onclick="switchView('wins')" class="px-4 py-2 rounded-md text-sm font-semibold transition bg-amber-500 text-slate-950">
+                    Most Wins
+                </button>
+                <button id="btnPct" onclick="switchView('pct')" class="px-4 py-2 rounded-md text-sm font-semibold transition text-slate-300 hover:text-white">
+                    Win Percentage
+                </button>
+            </div>
+            <div class="text-sm text-slate-400">
+                <label for="minGames" class="mr-2">Min Games Played:</label>
+                <input type="number" id="minGames" value="1" min="1" oninput="updateLeaderboard()" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 w-16 text-center text-white focus:outline-none focus:border-amber-500">
+            </div>
+        </div>
+
+        <!-- Leaderboard Table Container -->
+        <div class="bg-slate-800 rounded-xl shadow-xl overflow-hidden border border-slate-700">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-slate-700/50 text-slate-300 text-xs font-semibold uppercase tracking-wider border-b border-slate-700">
+                        <th class="py-4 px-6 text-center w-16">Rank</th>
+                        <th class="py-4 px-6">Player</th>
+                        <th class="py-4 px-6 text-center">Wins</th>
+                        <th class="py-4 px-6 text-center">Games Played</th>
+                        <th class="py-4 px-6 text-right">Win %</th>
+                    </tr>
+                </thead>
+                <tbody id="leaderboardBody" class="divide-y divide-slate-700/50">
+                    <tr>
+                        <td colspan="5" class="py-8 text-center text-slate-400">Loading standings from Google Sheets...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // REPLACE THIS URL with your published Google Sheets CSV Link:
+        const csvUrl = 'YOUR_PUBLISHED_CSV_LINK_HERE';
+
+        let players = [];
+        let currentSortMode = 'wins';
+
+        // 1. Fetch and Parse CSV Data from Google Sheets
+        async function fetchSpreadsheetData() {
+            try {
+                if (csvUrl === 'YOUR_PUBLISHED_CSV_LINK_HERE') {
+                    throw new Error("Please replace the 'csvUrl' variable with your published Google Sheets link.");
+                }
+
+                const response = await fetch(csvUrl);
+                const csvText = await response.text();
+                
+                // Parse CSV rows simple way (assumes no commas within player names)
+                const lines = csvText.split('\n');
+                const parsedPlayers = [];
+
+                // Skip header (i=0), start reading data rows
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue; // Skip empty rows
+
+                    const columns = line.split(',');
+                    
+                    // Column index mapping based on your spreadsheet:
+                    // A = Player (0), B = Wins (1), C = Games (2)
+                    const name = columns[0];
+                    const wins = parseInt(columns[1].replace(/[^0-9]/g, '')) || 0; // Strip notes like "1*"
+                    const games = parseInt(columns[2]) || 0;
+
+                    if (name) {
+                        parsedPlayers.push({ name, wins, games });
+                    }
+                }
+
+                players = parsedPlayers;
+                updateLeaderboard();
+
+            } catch (error) {
+                console.error("Error fetching sheet:", error);
+                document.getElementById('leaderboardBody').innerHTML = `
+                    <tr>
+                        <td colspan="5" class="py-8 text-center text-rose-400">
+                            Failed to load leaderboard data. ${error.message}
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        function switchView(mode) {
+            currentSortMode = mode;
+            
+            const btnWins = document.getElementById('btnWins');
+            const btnPct = document.getElementById('btnPct');
+            
+            if (mode === 'wins') {
+                btnWins.className = "px-4 py-2 rounded-md text-sm font-semibold transition bg-amber-500 text-slate-950";
+                btnPct.className = "px-4 py-2 rounded-md text-sm font-semibold transition text-slate-300 hover:text-white";
+            } else {
+                btnWins.className = "px-4 py-2 rounded-md text-sm font-semibold transition text-slate-300 hover:text-white";
+                btnPct.className = "px-4 py-2 rounded-md text-sm font-semibold transition bg-amber-500 text-slate-950";
+            }
+            
+            updateLeaderboard();
+        }
+
+        function updateLeaderboard() {
+            const minGames = parseInt(document.getElementById('minGames').value) || 1;
+            const tbody = document.getElementById('leaderboardBody');
+            tbody.innerHTML = '';
+
+            if (players.length === 0) return;
+
+            // Filter players by min games
+            let filtered = players.filter(p => p.games >= minGames);
+
+            // Sort logic
+            filtered.sort((a, b) => {
+                const aPct = a.games > 0 ? (a.wins / a.games) : 0;
+                const bPct = b.games > 0 ? (b.wins / b.games) : 0;
+
+                if (currentSortMode === 'wins') {
+                    if (b.wins !== a.wins) return b.wins - a.wins;
+                    return bPct - aPct;
+                } else {
+                    if (bPct !== aPct) return bPct - aPct;
+                    return b.wins - a.wins;
+                }
+            });
+
+            // Render rows
+            filtered.forEach((player, index) => {
+                const rank = index + 1;
+                const pct = player.games > 0 ? ((player.wins / player.games) * 100).toFixed(1) : "0.0";
+                
+                let rankBadge = `<span class="text-slate-400 font-bold">${rank}</span>`;
+                if (rank === 1) rankBadge = `<span class="inline-flex items-center justify-center bg-amber-500/20 text-amber-400 font-bold border border-amber-500/30 rounded-full w-8 h-8">🥇</span>`;
+                if (rank === 2) rankBadge = `<span class="inline-flex items-center justify-center bg-slate-300/20 text-slate-300 font-bold border border-slate-300/30 rounded-full w-8 h-8">🥈</span>`;
+                if (rank === 3) rankBadge = `<span class="inline-flex items-center justify-center bg-amber-700/20 text-amber-600 font-bold border border-amber-700/30 rounded-full w-8 h-8">🥉</span>`;
+
+                const row = `
+                    <tr class="hover:bg-slate-750 transition border-b border-slate-700/30">
+                        <td class="py-4 px-6 text-center">${rankBadge}</td>
+                        <td class="py-4 px-6 font-semibold text-white">${player.name}</td>
+                        <td class="py-4 px-6 text-center font-medium">${player.wins}</td>
+                        <td class="py-4 px-6 text-center text-slate-400">${player.games}</td>
+                        <td class="py-4 px-6 text-right font-bold text-emerald-400">${pct}%</td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        }
+
+        // Run fetch setup on page load
+        fetchSpreadsheetData();
+    </script>
+</body>
+</html>
